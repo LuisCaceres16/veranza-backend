@@ -52,7 +52,35 @@ async function initDB() {
         email       VARCHAR(100) UNIQUE NOT NULL,
         password    VARCHAR(255) NOT NULL,
         rol         VARCHAR(20) DEFAULT 'agente',
+        telefono    VARCHAR(20) DEFAULT NULL,
         creado_en   TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    // Agregar columna telefono si no existe
+    try {
+      await client.query("ALTER TABLE usuarios ADD COLUMN telefono VARCHAR(20) DEFAULT NULL");
+    } catch(e) { /* ya existe */ }
+
+    // Tabla de semanas bloqueadas
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS semanas_bloqueadas (
+        id           SERIAL PRIMARY KEY,
+        fecha_inicio DATE NOT NULL,
+        fecha_fin    DATE NOT NULL,
+        motivo       VARCHAR(200),
+        activo       BOOLEAN DEFAULT TRUE,
+        creado_en    TIMESTAMP DEFAULT NOW()
+      )
+    `);
+
+    // Tabla de encargados independiente
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS encargados (
+        id         SERIAL PRIMARY KEY,
+        nombre     VARCHAR(100) NOT NULL,
+        telefono   VARCHAR(20) NOT NULL,
+        activo     BOOLEAN DEFAULT TRUE,
+        creado_en  TIMESTAMP DEFAULT NOW()
       )
     `);
 
@@ -65,7 +93,7 @@ async function initDB() {
         mejor_contacto  VARCHAR(50),
         red_social      VARCHAR(100),
         fecha           DATE,
-        fecha_cita      TIMESTAMP,
+        fecha_cita      TIMESTAMP WITHOUT TIME ZONE,
         encargado       VARCHAR(100),
         opciones_cita   TEXT,
         observaciones   TEXT,
@@ -228,7 +256,7 @@ app.post('/api/registro-publico', async (req, res) => {
 // ── USUARIOS ──────────────────────────────────────────────────────
 app.get('/api/usuarios', authMiddleware, async (req, res) => {
   if (req.user.rol !== 'admin') return res.status(403).json({ error: 'Sin permiso' });
-  const { rows } = await pool.query('SELECT id, nombre, email, rol, creado_en FROM usuarios ORDER BY creado_en DESC');
+  const { rows } = await pool.query('SELECT id, nombre, email, rol, telefono, creado_en FROM usuarios ORDER BY creado_en DESC');
   res.json(rows);
 });
 
@@ -238,15 +266,25 @@ app.post('/api/usuarios', authMiddleware, async (req, res) => {
   if (!nombre || !email || !password) return res.status(400).json({ error: 'Campos requeridos' });
   try {
     const hash = await bcrypt.hash(password, 10);
+    const { telefono: tel } = req.body;
     await pool.query(
-      'INSERT INTO usuarios (nombre, email, password, rol) VALUES ($1,$2,$3,$4)',
-      [nombre, email, hash, rol || 'agente']
+      'INSERT INTO usuarios (nombre, email, password, rol, telefono) VALUES ($1,$2,$3,$4,$5)',
+      [nombre, email, hash, rol || 'agente', tel || null]
     );
     res.status(201).json({ mensaje: 'Usuario creado' });
   } catch (err) {
     if (err.code === '23505') return res.status(400).json({ error: 'Email ya registrado' });
     res.status(500).json({ error: err.message });
   }
+});
+
+app.put('/api/usuarios/:id', authMiddleware, async (req, res) => {
+  if (req.user.rol !== 'admin') return res.status(403).json({ error: 'Sin permiso' });
+  const { nombre, telefono } = req.body;
+  try {
+    await pool.query('UPDATE usuarios SET nombre=$1, telefono=$2 WHERE id=$3', [nombre, telefono||null, req.params.id]);
+    res.json({ mensaje: 'Usuario actualizado' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.delete('/api/usuarios/:id', authMiddleware, async (req, res) => {
@@ -257,6 +295,73 @@ app.delete('/api/usuarios/:id', authMiddleware, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// ── SEMANAS BLOQUEADAS ───────────────────────────────────────────
+app.get('/api/semanas-bloqueadas', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM semanas_bloqueadas WHERE activo=true ORDER BY fecha_inicio ASC');
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/semanas-bloqueadas', authMiddleware, async (req, res) => {
+  if (req.user.rol !== 'admin') return res.status(403).json({ error: 'Sin permiso' });
+  const { fecha_inicio, fecha_fin, motivo } = req.body;
+  if (!fecha_inicio || !fecha_fin) return res.status(400).json({ error: 'Fechas requeridas' });
+  try {
+    const { rows } = await pool.query(
+      'INSERT INTO semanas_bloqueadas (fecha_inicio, fecha_fin, motivo) VALUES ($1,$2,$3) RETURNING *',
+      [fecha_inicio, fecha_fin, motivo || null]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/semanas-bloqueadas/:id', authMiddleware, async (req, res) => {
+  if (req.user.rol !== 'admin') return res.status(403).json({ error: 'Sin permiso' });
+  try {
+    await pool.query('UPDATE semanas_bloqueadas SET activo=false WHERE id=$1', [req.params.id]);
+    res.json({ mensaje: 'Eliminado' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── ENCARGADOS ───────────────────────────────────────────────────
+app.get('/api/encargados', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM encargados WHERE activo=true ORDER BY nombre ASC');
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/encargados', authMiddleware, async (req, res) => {
+  if (req.user.rol !== 'admin') return res.status(403).json({ error: 'Sin permiso' });
+  const { nombre, telefono } = req.body;
+  if (!nombre || !telefono) return res.status(400).json({ error: 'Nombre y teléfono requeridos' });
+  try {
+    const { rows } = await pool.query(
+      'INSERT INTO encargados (nombre, telefono) VALUES ($1,$2) RETURNING *',
+      [nombre, telefono]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/encargados/:id', authMiddleware, async (req, res) => {
+  if (req.user.rol !== 'admin') return res.status(403).json({ error: 'Sin permiso' });
+  const { nombre, telefono } = req.body;
+  try {
+    await pool.query('UPDATE encargados SET nombre=$1, telefono=$2 WHERE id=$3', [nombre, telefono, req.params.id]);
+    res.json({ mensaje: 'Actualizado' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.delete('/api/encargados/:id', authMiddleware, async (req, res) => {
+  if (req.user.rol !== 'admin') return res.status(403).json({ error: 'Sin permiso' });
+  try {
+    await pool.query('UPDATE encargados SET activo=false WHERE id=$1', [req.params.id]);
+    res.json({ mensaje: 'Eliminado' });
+  } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', proyecto: 'Veranza Residencial' }));
