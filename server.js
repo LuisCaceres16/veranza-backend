@@ -409,7 +409,9 @@ try { nodemailer = require('nodemailer'); } catch(e) { console.warn('nodemailer 
 function crearTransporter() {
   if (!nodemailer) throw new Error('nodemailer no instalado — ejecuta npm install en el servidor');
   return nodemailer.createTransport({
-    service: 'gmail',
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
