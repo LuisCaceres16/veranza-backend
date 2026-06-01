@@ -423,16 +423,16 @@ app.post('/api/email/cliente', authMiddleware, async (req, res) => {
   try {
     await enviarEmail({
       to: correo,
-      subject: 'Confirmacion de cita - Veranza Residencial',
+      subject: 'Confirmacion de cita - Residencial Veranza',
       html: `<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
-          <div style="background:#0D4A3A;padding:20px 24px;"><h2 style="color:#fff;margin:0;font-size:18px;">Veranza Residencial</h2></div>
+          <div style="background:#0D4A3A;padding:20px 24px;"><h2 style="color:#fff;margin:0;font-size:18px;">Residencial Veranza</h2></div>
           <div style="padding:24px;">
             <p style="font-size:15px;color:#374151;">Hola <strong>${nombre}</strong>,</p>
             <p style="font-size:15px;color:#374151;">Tu cita con nuestro asesor de ventas esta <strong>confirmada</strong>:</p>
             <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 18px;margin:16px 0;">
               <p style="margin:0;font-size:15px;color:#0D4A3A;font-weight:bold;">${fechaCita}</p>
             </div>
-            <p style="font-size:14px;color:#374151;"><strong>Ubicacion:</strong><br/><a href="${ubicacionUrl}" style="color:#0D4A3A;">${ubicacionTexto}</a></p>
+            <p style="font-size:14px;color:#374151;"><strong>Ubicacion:</strong><br/><a href="https://maps.app.goo.gl/7rUp5EHfxgGk4x59A" style="color:#0D4A3A;">Ver ubicacion en Maps</a></p>
             <p style="font-size:13px;color:#6b7280;margin-top:20px;">Si necesitas cambiar tu cita, responde este correo. Te esperamos!</p>
           </div>
           <div style="background:#f8fafc;padding:12px 24px;border-top:1px solid #e5e7eb;"><p style="margin:0;font-size:11px;color:#9ca3af;">Residencial Veranza</p></div>
@@ -449,9 +449,9 @@ app.post('/api/email/encargado', authMiddleware, async (req, res) => {
   try {
     await enviarEmail({
       to: correoEncargado,
-      subject: 'Nueva cita asignada - Veranza Residencial',
+      subject: 'Nueva cita asignada - Residencial Veranza',
       html: `<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
-          <div style="background:#0D4A3A;padding:20px 24px;"><h2 style="color:#fff;margin:0;font-size:18px;">Veranza Residencial</h2></div>
+          <div style="background:#0D4A3A;padding:20px 24px;"><h2 style="color:#fff;margin:0;font-size:18px;">Residencial Veranza</h2></div>
           <div style="padding:24px;">
             <p style="font-size:15px;color:#374151;">Hola <strong>${nombreEncargado}</strong>,</p>
             <p style="font-size:15px;color:#374151;">Tienes una nueva cita asignada:</p>
