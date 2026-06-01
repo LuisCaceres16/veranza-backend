@@ -453,7 +453,7 @@ app.post('/api/email/cliente', authMiddleware, async (req, res) => {
         </div>`,
     });
     res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { console.error('EMAIL CLIENTE ERROR:', err.message); res.status(500).json({ error: err.message }); }
 });
 
 // Enviar notificación al encargado
@@ -489,10 +489,8 @@ app.post('/api/email/encargado', authMiddleware, async (req, res) => {
         </div>`,
     });
     res.json({ ok: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  } catch (err) { console.error('EMAIL ERROR:', err.message); res.status(500).json({ error: err.message }); }
 });
-
-// ── Iniciar ───────────────────────────────────────────────────────
 const PORT = process.env.PORT || 4000;
 initDB().then(() => {
   app.listen(PORT, () => {
