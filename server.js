@@ -1,3 +1,4 @@
+// Veranza Backend v2.1 — con email encargados y citas ocupadas
 const express    = require('express');
 const { Pool }   = require('pg');
 const bcrypt     = require('bcryptjs');
@@ -78,11 +79,15 @@ async function initDB() {
       CREATE TABLE IF NOT EXISTS encargados (
         id         SERIAL PRIMARY KEY,
         nombre     VARCHAR(100) NOT NULL,
-        telefono   VARCHAR(20) NOT NULL,
+        telefono   VARCHAR(20),
+        email      VARCHAR(100),
         activo     BOOLEAN DEFAULT TRUE,
         creado_en  TIMESTAMP DEFAULT NOW()
       )
     `);
+    // Migración: agregar columnas si no existen (BD ya existente)
+    await client.query(`ALTER TABLE encargados ADD COLUMN IF NOT EXISTS email VARCHAR(100)`).catch(()=>{});
+    await client.query(`ALTER TABLE encargados ALTER COLUMN telefono DROP NOT NULL`).catch(()=>{});
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS clientes (
@@ -301,7 +306,17 @@ app.delete('/api/usuarios/:id', authMiddleware, async (req, res) => {
 app.get('/api/semanas-bloqueadas', async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM semanas_bloqueadas WHERE activo=true ORDER BY fecha_inicio ASC');
-    res.json(rows);
+    // Serializar fechas como strings YYYY-MM-DD para evitar desfase UTC en el cliente
+    const data = rows.map(r => ({
+      ...r,
+      fecha_inicio: r.fecha_inicio instanceof Date
+        ? r.fecha_inicio.toISOString().slice(0,10)
+        : String(r.fecha_inicio).slice(0,10),
+      fecha_fin: r.fecha_fin instanceof Date
+        ? r.fecha_fin.toISOString().slice(0,10)
+        : String(r.fecha_fin).slice(0,10),
+    }));
+    res.json(data);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -336,12 +351,12 @@ app.get('/api/encargados', authMiddleware, async (req, res) => {
 
 app.post('/api/encargados', authMiddleware, async (req, res) => {
   if (req.user.rol !== 'admin') return res.status(403).json({ error: 'Sin permiso' });
-  const { nombre, telefono } = req.body;
-  if (!nombre || !telefono) return res.status(400).json({ error: 'Nombre y teléfono requeridos' });
+  const { nombre, telefono, email } = req.body;
+  if (!nombre) return res.status(400).json({ error: 'Nombre requerido' });
   try {
     const { rows } = await pool.query(
-      'INSERT INTO encargados (nombre, telefono) VALUES ($1,$2) RETURNING *',
-      [nombre, telefono]
+      'INSERT INTO encargados (nombre, telefono, email) VALUES ($1,$2,$3) RETURNING *',
+      [nombre, telefono||null, email||null]
     );
     res.status(201).json(rows[0]);
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -349,9 +364,9 @@ app.post('/api/encargados', authMiddleware, async (req, res) => {
 
 app.put('/api/encargados/:id', authMiddleware, async (req, res) => {
   if (req.user.rol !== 'admin') return res.status(403).json({ error: 'Sin permiso' });
-  const { nombre, telefono } = req.body;
+  const { nombre, telefono, email } = req.body;
   try {
-    await pool.query('UPDATE encargados SET nombre=$1, telefono=$2 WHERE id=$3', [nombre, telefono, req.params.id]);
+    await pool.query('UPDATE encargados SET nombre=$1, telefono=$2, email=$3 WHERE id=$4', [nombre, telefono||null, email||null, req.params.id]);
     res.json({ mensaje: 'Actualizado' });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -365,6 +380,115 @@ app.delete('/api/encargados/:id', authMiddleware, async (req, res) => {
 });
 
 app.get('/api/health', (req, res) => res.json({ status: 'ok', proyecto: 'Veranza Residencial' }));
+
+// ── Citas ocupadas (para bloquear horas ya asignadas) ─────────────
+app.get('/api/citas-ocupadas', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, nombre_apellido, fecha_cita
+       FROM clientes
+       WHERE fecha_cita IS NOT NULL
+       ORDER BY fecha_cita ASC`
+    );
+    // Devolver como strings YYYY-MM-DDTHH:MM para comparar fácil en frontend
+    const data = rows.map(r => ({
+      id: r.id,
+      nombre: r.nombre_apellido,
+      fecha_cita: r.fecha_cita instanceof Date
+        ? r.fecha_cita.toISOString().slice(0,16)
+        : String(r.fecha_cita).slice(0,16),
+    }));
+    res.json(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Email ─────────────────────────────────────────────────────────
+let nodemailer;
+try { nodemailer = require('nodemailer'); } catch(e) { console.warn('nodemailer no instalado:', e.message); }
+
+function crearTransporter() {
+  if (!nodemailer) throw new Error('nodemailer no instalado — ejecuta npm install en el servidor');
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+}
+
+// Enviar confirmación al cliente
+app.post('/api/email/cliente', authMiddleware, async (req, res) => {
+  const { correo, nombre, fechaCita, ubicacionUrl, ubicacionTexto } = req.body;
+  if (!correo) return res.status(400).json({ error: 'Correo del cliente requerido' });
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS)
+    return res.status(503).json({ error: 'Correo no configurado en el servidor' });
+  try {
+    const transporter = crearTransporter();
+    await transporter.sendMail({
+      from: `"Veranza Residencial" <${process.env.EMAIL_USER}>`,
+      to: correo,
+      subject: '✅ Confirmación de cita — Veranza Residencial',
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+          <div style="background:#0D4A3A;padding:20px 24px;">
+            <h2 style="color:#fff;margin:0;font-size:18px;">🏠 Veranza Residencial</h2>
+          </div>
+          <div style="padding:24px;">
+            <p style="font-size:15px;color:#374151;">Hola <strong>${nombre}</strong>,</p>
+            <p style="font-size:15px;color:#374151;">✅ Tu cita con nuestro asesor de ventas está <strong>confirmada</strong>:</p>
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 18px;margin:16px 0;">
+              <p style="margin:0;font-size:15px;color:#0D4A3A;font-weight:bold;">📅 ${fechaCita}</p>
+            </div>
+            <p style="font-size:14px;color:#374151;">📍 <strong>Ubicación:</strong><br/>
+              <a href="${ubicacionUrl}" style="color:#0D4A3A;">${ubicacionTexto}</a>
+            </p>
+            <p style="font-size:13px;color:#6b7280;margin-top:20px;">Si necesitas cambiar tu cita, responde este correo o contáctanos. ¡Te esperamos! 🙌</p>
+          </div>
+          <div style="background:#f8fafc;padding:12px 24px;border-top:1px solid #e5e7eb;">
+            <p style="margin:0;font-size:11px;color:#9ca3af;">Residencial Veranza © ${new Date().getFullYear()}</p>
+          </div>
+        </div>`,
+    });
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Enviar notificación al encargado
+app.post('/api/email/encargado', authMiddleware, async (req, res) => {
+  const { correoEncargado, nombreEncargado, nombreCliente, telefonoCliente, contactarPor, fechaCita } = req.body;
+  if (!correoEncargado) return res.status(400).json({ error: 'Correo del encargado requerido' });
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS)
+    return res.status(503).json({ error: 'Correo no configurado en el servidor' });
+  try {
+    const transporter = crearTransporter();
+    await transporter.sendMail({
+      from: `"Veranza Residencial" <${process.env.EMAIL_USER}>`,
+      to: correoEncargado,
+      subject: '📅 Nueva cita asignada — Veranza Residencial',
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+          <div style="background:#0D4A3A;padding:20px 24px;">
+            <h2 style="color:#fff;margin:0;font-size:18px;">🏠 Veranza Residencial</h2>
+          </div>
+          <div style="padding:24px;">
+            <p style="font-size:15px;color:#374151;">Hola <strong>${nombreEncargado}</strong>,</p>
+            <p style="font-size:15px;color:#374151;">Tienes una nueva cita asignada:</p>
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 18px;margin:16px 0;">
+              <p style="margin:4px 0;font-size:14px;color:#374151;">👤 <strong>Cliente:</strong> ${nombreCliente}</p>
+              <p style="margin:4px 0;font-size:14px;color:#374151;">📞 <strong>Teléfono:</strong> ${telefonoCliente}</p>
+              <p style="margin:4px 0;font-size:14px;color:#374151;">📲 <strong>Contactar por:</strong> ${contactarPor}</p>
+              <p style="margin:4px 0;font-size:15px;color:#0D4A3A;font-weight:bold;">📅 <strong>Fecha y hora:</strong> ${fechaCita}</p>
+            </div>
+          </div>
+          <div style="background:#f8fafc;padding:12px 24px;border-top:1px solid #e5e7eb;">
+            <p style="margin:0;font-size:11px;color:#9ca3af;">Residencial Veranza © ${new Date().getFullYear()}</p>
+          </div>
+        </div>`,
+    });
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 // ── Iniciar ───────────────────────────────────────────────────────
 const PORT = process.env.PORT || 4000;
