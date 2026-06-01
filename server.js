@@ -402,81 +402,56 @@ app.get('/api/citas-ocupadas', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── Email ─────────────────────────────────────────────────────────
-let nodemailer;
-try { nodemailer = require('nodemailer'); } catch(e) { console.warn('nodemailer no instalado:', e.message); }
-
-function crearTransporter() {
-  if (!nodemailer) throw new Error('nodemailer no instalado — ejecuta npm install en el servidor');
-  return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
-    },
-    tls: { rejectUnauthorized: false },
+// ── Email via Resend (funciona en Render free tier) ───────────────
+async function enviarEmail({ to, subject, html }) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) throw new Error('RESEND_API_KEY no configurada en el servidor');
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from: 'Veranza Residencial <onboarding@resend.dev>', to, subject, html }),
   });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || 'Error enviando correo');
+  return data;
 }
 
 // Enviar confirmación al cliente
 app.post('/api/email/cliente', authMiddleware, async (req, res) => {
   const { correo, nombre, fechaCita, ubicacionUrl, ubicacionTexto } = req.body;
   if (!correo) return res.status(400).json({ error: 'Correo del cliente requerido' });
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS)
-    return res.status(503).json({ error: 'Correo no configurado en el servidor' });
   try {
-    const transporter = crearTransporter();
-    await transporter.sendMail({
-      from: `"Veranza Residencial" <${process.env.EMAIL_USER}>`,
+    await enviarEmail({
       to: correo,
-      subject: '✅ Confirmación de cita — Veranza Residencial',
-      html: `
-        <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
-          <div style="background:#0D4A3A;padding:20px 24px;">
-            <h2 style="color:#fff;margin:0;font-size:18px;">🏠 Veranza Residencial</h2>
-          </div>
+      subject: 'Confirmacion de cita - Veranza Residencial',
+      html: `<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+          <div style="background:#0D4A3A;padding:20px 24px;"><h2 style="color:#fff;margin:0;font-size:18px;">Veranza Residencial</h2></div>
           <div style="padding:24px;">
             <p style="font-size:15px;color:#374151;">Hola <strong>${nombre}</strong>,</p>
-            <p style="font-size:15px;color:#374151;">✅ Tu cita con nuestro asesor de ventas está <strong>confirmada</strong>:</p>
+            <p style="font-size:15px;color:#374151;">Tu cita con nuestro asesor de ventas esta <strong>confirmada</strong>:</p>
             <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 18px;margin:16px 0;">
-              <p style="margin:0;font-size:15px;color:#0D4A3A;font-weight:bold;">📅 ${fechaCita}</p>
+              <p style="margin:0;font-size:15px;color:#0D4A3A;font-weight:bold;">${fechaCita}</p>
             </div>
-            <p style="font-size:14px;color:#374151;">📍 <strong>Ubicación:</strong><br/>
-              <a href="${ubicacionUrl}" style="color:#0D4A3A;">${ubicacionTexto}</a>
-            </p>
-            <p style="font-size:13px;color:#6b7280;margin-top:20px;">Si necesitas cambiar tu cita, responde este correo o contáctanos. ¡Te esperamos! 🙌</p>
+            <p style="font-size:14px;color:#374151;"><strong>Ubicacion:</strong><br/><a href="${ubicacionUrl}" style="color:#0D4A3A;">${ubicacionTexto}</a></p>
+            <p style="font-size:13px;color:#6b7280;margin-top:20px;">Si necesitas cambiar tu cita, responde este correo. Te esperamos!</p>
           </div>
-          <div style="background:#f8fafc;padding:12px 24px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0;font-size:11px;color:#9ca3af;">Residencial Veranza © ${new Date().getFullYear()}</p>
-          </div>
+          <div style="background:#f8fafc;padding:12px 24px;border-top:1px solid #e5e7eb;"><p style="margin:0;font-size:11px;color:#9ca3af;">Residencial Veranza</p></div>
         </div>`,
     });
     res.json({ ok: true });
-  } catch (err) { 
-    console.error('EMAIL CLIENTE ERROR:', err.message);
-    res.status(500).json({ error: err.message }); 
-  }
+  } catch (err) { console.error('EMAIL CLIENTE ERROR:', err.message); res.status(500).json({ error: err.message }); }
 });
 
 // Enviar notificación al encargado
 app.post('/api/email/encargado', authMiddleware, async (req, res) => {
   const { correoEncargado, nombreEncargado, nombreCliente, telefonoCliente, contactarPor, fechaCita } = req.body;
   if (!correoEncargado) return res.status(400).json({ error: 'Correo del encargado requerido' });
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS)
-    return res.status(503).json({ error: 'Correo no configurado en el servidor' });
   try {
-    const transporter = crearTransporter();
-    await transporter.sendMail({
-      from: `"Veranza Residencial" <${process.env.EMAIL_USER}>`,
+    await enviarEmail({
       to: correoEncargado,
-      subject: '📅 Nueva cita asignada — Veranza Residencial',
-      html: `
-        <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
-          <div style="background:#0D4A3A;padding:20px 24px;">
-            <h2 style="color:#fff;margin:0;font-size:18px;">Veranza Residencial</h2>
-          </div>
+      subject: 'Nueva cita asignada - Veranza Residencial',
+      html: `<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+          <div style="background:#0D4A3A;padding:20px 24px;"><h2 style="color:#fff;margin:0;font-size:18px;">Veranza Residencial</h2></div>
           <div style="padding:24px;">
             <p style="font-size:15px;color:#374151;">Hola <strong>${nombreEncargado}</strong>,</p>
             <p style="font-size:15px;color:#374151;">Tienes una nueva cita asignada:</p>
@@ -487,17 +462,14 @@ app.post('/api/email/encargado', authMiddleware, async (req, res) => {
               <p style="margin:4px 0;font-size:15px;color:#0D4A3A;font-weight:bold;"><strong>Fecha y hora:</strong> ${fechaCita}</p>
             </div>
           </div>
-          <div style="background:#f8fafc;padding:12px 24px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0;font-size:11px;color:#9ca3af;">Residencial Veranza</p>
-          </div>
+          <div style="background:#f8fafc;padding:12px 24px;border-top:1px solid #e5e7eb;"><p style="margin:0;font-size:11px;color:#9ca3af;">Residencial Veranza</p></div>
         </div>`,
     });
     res.json({ ok: true });
-  } catch (err) {
-    console.error('EMAIL ENCARGADO ERROR:', err.message);
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err) { console.error('EMAIL ENCARGADO ERROR:', err.message); res.status(500).json({ error: err.message }); }
 });
+
+
 const PORT = process.env.PORT || 4000;
 initDB().then(() => {
   app.listen(PORT, () => {
