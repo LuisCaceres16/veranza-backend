@@ -416,6 +416,7 @@ function crearTransporter() {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASS,
     },
+    tls: { rejectUnauthorized: false },
   });
 }
 
@@ -453,7 +454,10 @@ app.post('/api/email/cliente', authMiddleware, async (req, res) => {
         </div>`,
     });
     res.json({ ok: true });
-  } catch (err) { console.error('EMAIL CLIENTE ERROR:', err.message); res.status(500).json({ error: err.message }); }
+  } catch (err) { 
+    console.error('EMAIL CLIENTE ERROR:', err.message);
+    res.status(500).json({ error: err.message }); 
+  }
 });
 
 // Enviar notificación al encargado
@@ -471,25 +475,28 @@ app.post('/api/email/encargado', authMiddleware, async (req, res) => {
       html: `
         <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
           <div style="background:#0D4A3A;padding:20px 24px;">
-            <h2 style="color:#fff;margin:0;font-size:18px;">🏠 Veranza Residencial</h2>
+            <h2 style="color:#fff;margin:0;font-size:18px;">Veranza Residencial</h2>
           </div>
           <div style="padding:24px;">
             <p style="font-size:15px;color:#374151;">Hola <strong>${nombreEncargado}</strong>,</p>
             <p style="font-size:15px;color:#374151;">Tienes una nueva cita asignada:</p>
             <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 18px;margin:16px 0;">
-              <p style="margin:4px 0;font-size:14px;color:#374151;">👤 <strong>Cliente:</strong> ${nombreCliente}</p>
-              <p style="margin:4px 0;font-size:14px;color:#374151;">📞 <strong>Teléfono:</strong> ${telefonoCliente}</p>
-              <p style="margin:4px 0;font-size:14px;color:#374151;">📲 <strong>Contactar por:</strong> ${contactarPor}</p>
-              <p style="margin:4px 0;font-size:15px;color:#0D4A3A;font-weight:bold;">📅 <strong>Fecha y hora:</strong> ${fechaCita}</p>
+              <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Cliente:</strong> ${nombreCliente}</p>
+              <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Telefono:</strong> ${telefonoCliente}</p>
+              <p style="margin:4px 0;font-size:14px;color:#374151;"><strong>Contactar por:</strong> ${contactarPor}</p>
+              <p style="margin:4px 0;font-size:15px;color:#0D4A3A;font-weight:bold;"><strong>Fecha y hora:</strong> ${fechaCita}</p>
             </div>
           </div>
           <div style="background:#f8fafc;padding:12px 24px;border-top:1px solid #e5e7eb;">
-            <p style="margin:0;font-size:11px;color:#9ca3af;">Residencial Veranza © ${new Date().getFullYear()}</p>
+            <p style="margin:0;font-size:11px;color:#9ca3af;">Residencial Veranza</p>
           </div>
         </div>`,
     });
     res.json({ ok: true });
-  } catch (err) { console.error('EMAIL ERROR:', err.message); res.status(500).json({ error: err.message }); }
+  } catch (err) {
+    console.error('EMAIL ENCARGADO ERROR:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 const PORT = process.env.PORT || 4000;
 initDB().then(() => {
