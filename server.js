@@ -379,7 +379,7 @@ app.delete('/api/encargados/:id', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/health', (req, res) => res.json({ status: 'ok', proyecto: 'Residencial Veranza ' }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok', proyecto: 'Veranza Residencial' }));
 
 // ── Citas ocupadas (para bloquear horas ya asignadas) ─────────────
 app.get('/api/citas-ocupadas', authMiddleware, async (req, res) => {
@@ -409,7 +409,7 @@ async function enviarEmail({ to, subject, html }) {
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: 'Residencial Veranza  <onboarding@resend.dev>', to, subject, html }),
+    body: JSON.stringify({ from: 'Veranza Residencial <onboarding@resend.dev>', to, subject, html }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.message || 'Error enviando correo');
@@ -423,7 +423,7 @@ app.post('/api/email/cliente', authMiddleware, async (req, res) => {
   try {
     await enviarEmail({
       to: correo,
-      subject: 'Confirmacion de cita - Residencial Veranza',
+      subject: `Confirmacion de cita - Residencial Veranza - ${fechaCita}`,
       html: `<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
           <div style="background:#0D4A3A;padding:20px 24px;"><h2 style="color:#fff;margin:0;font-size:18px;">Residencial Veranza</h2></div>
           <div style="padding:24px;">
@@ -449,7 +449,7 @@ app.post('/api/email/encargado', authMiddleware, async (req, res) => {
   try {
     await enviarEmail({
       to: correoEncargado,
-      subject: 'Nueva cita asignada - Residencial Veranza',
+      subject: `Nueva cita asignada - Residencial Veranza - ${fechaCita}`,
       html: `<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
           <div style="background:#0D4A3A;padding:20px 24px;"><h2 style="color:#fff;margin:0;font-size:18px;">Residencial Veranza</h2></div>
           <div style="padding:24px;">
