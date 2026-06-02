@@ -379,7 +379,7 @@ app.delete('/api/encargados/:id', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/health', (req, res) => res.json({ status: 'ok', proyecto: 'Residencial Veranza ' }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok', proyecto: 'Veranza Residencial' }));
 
 // ── Citas ocupadas (para bloquear horas ya asignadas) ─────────────
 app.get('/api/citas-ocupadas', authMiddleware, async (req, res) => {
@@ -402,17 +402,25 @@ app.get('/api/citas-ocupadas', authMiddleware, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── Email via Resend (funciona en Render free tier) ───────────────
+// ── Email via Brevo (funciona en Render free tier, sin restriccion de dominio) ─
 async function enviarEmail({ to, subject, html }) {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) throw new Error('RESEND_API_KEY no configurada en el servidor');
-  const res = await fetch('https://api.resend.com/emails', {
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey) throw new Error('BREVO_API_KEY no configurada en el servidor');
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: 'Residencial Veranza  <onboarding@resend.dev>', to, subject, html }),
+    headers: {
+      'api-key': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      sender: { name: 'Residencial Veranza', email: process.env.EMAIL_USER || 'noreply@residencialveranza.com' },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html,
+    }),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.message || 'Error enviando correo');
+  if (!res.ok) throw new Error(JSON.stringify(data));
   return data;
 }
 
