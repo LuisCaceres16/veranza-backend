@@ -218,15 +218,24 @@ app.put('/api/clientes/:id', authMiddleware, async (req, res) => {
   try {
     await pool.query(
       `UPDATE clientes SET
-        nombre_apellido=$1, telefono=$2, correo=$3, mejor_contacto=$4, red_social=$5,
-        fecha=$6, fecha_cita=$7, encargado=$8, opciones_cita=$9, observaciones=$10,
-        actualizado_en=NOW()
+        nombre_apellido = COALESCE($1, nombre_apellido),
+        telefono        = COALESCE($2, telefono),
+        correo          = COALESCE($3, correo),
+        mejor_contacto  = COALESCE($4, mejor_contacto),
+        red_social      = COALESCE($5, red_social),
+        fecha           = COALESCE($6, fecha),
+        fecha_cita      = COALESCE($7, fecha_cita),
+        encargado       = COALESCE($8, encargado),
+        opciones_cita   = COALESCE($9, opciones_cita),
+        observaciones   = COALESCE($10, observaciones),
+        actualizado_en  = NOW()
        WHERE id=$11`,
-      [nombre_apellido, telefono||null, correo||null, mejor_contacto||null, red_social||null,
+      [nombre_apellido||null, telefono||null, correo||null, mejor_contacto||null, red_social||null,
        fecha||null, fecha_cita||null, encargado||null, opciones_cita||null, observaciones||null, req.params.id]
     );
     res.json({ mensaje: 'Actualizado' });
   } catch (err) {
+    console.error('PUT cliente error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
